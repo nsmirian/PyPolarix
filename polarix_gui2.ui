@@ -278,8 +278,13 @@
       </disabled>
      </palette>
     </property>
+    <property name="font">
+     <font>
+      <family>URW Palladio L</family>
+     </font>
+    </property>
     <property name="currentIndex">
-     <number>1</number>
+     <number>0</number>
     </property>
     <widget class="QWidget" name="tab">
      <attribute name="title">
@@ -447,6 +452,7 @@
          <weight>9</weight>
          <italic>true</italic>
          <bold>false</bold>
+         <kerning>true</kerning>
         </font>
        </property>
        <property name="styleSheet">
@@ -654,6 +660,7 @@ font: 75 italic 11pt &quot;UnBatang&quot;;</string>
        </property>
        <property name="font">
         <font>
+         <family>URW Palladio L</family>
          <pointsize>10</pointsize>
         </font>
        </property>
