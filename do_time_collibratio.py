@@ -35,7 +35,7 @@ def do_time_collibration(min, max):
     ddd_write = pydoocs.write((addr.camara+'SPECTRUM.ON'), 1);
 
 ## prepare data structure -----------------------------------------------------------
-    ddd_read        = pydoocs.read([addr.camara, 'IMAGE_EXT']);
+    ddd_read        = pydoocs.read(addr.camara+'IMAGE_EXT');
     cam_spec        = ddd_read[data];
 
     # background (shot, spectrum) -----------------------------------------------------------
@@ -101,26 +101,27 @@ def do_time_collibration(min, max):
     for jj in range(num_bgr):
 
     # read x
-        ddd_read            = pydoocs.read([addr_cam+'SPECTRUM.X.TD']);
-        bgr_x[jj, :]        = ddd_read['d_gspect_array_val'];
+        ddd_read            = pydoocs.read(addr_cam+'SPECTRUM.X.TD');
+        bgr_x[jj, :]        = ddd_read['data'];
         datatimestamp[jj]   = ddd_read['timestamp'];
         print(jj)
     ## compared it with last measurement -----------------------------------------------------------
         if jj > 1:
             while datatimestamp[jj] == datatimestamp[jj-1]:
-                ddd_read        = pydoocs.read([addr_cam+'SPECTRUM.X.TD']);
-                bgr_x(jj,:)     = ddd_read['d_gspect_array_val'];
+                ddd_read        = pydoocs.read(addr_cam+'SPECTRUM.X.TD');
+                bgr_x(jj,:)     = ddd_read['data'];
 
                 print( [' same data ... wait ...']);
                 time.sleep(1/rep_rate)
-        ddd_read            = pydoocs.read([addr_cam+'SPECTRUM.Y.TD']);
-        bgr_y[jj, :]        = ddd_read['d_gspect_array_val'];
+        ddd_read            = pydoocs.read(addr_cam+'SPECTRUM.Y.TD');
+        bgr_y[jj, :]        = ddd_read['data'];
         datatimestamp[jj]   = ddd_read['timestamp'];
 
         if jj > 1:
             while datatimestamp[jj] == datatimestamp[jj-1]:
                 ddd_read        = pydoocs.read([addr_cam+'SPECTRUM.Y.TD']);
                 bgr_x(jj,:)     = ddd_read['d_gspect_array_val'];
+                datatimestamp[jj]   = ddd_read['timestamp'];
                 time.sleep(1/rep_rate)
 
 
