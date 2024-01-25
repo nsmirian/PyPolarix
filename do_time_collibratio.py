@@ -26,23 +26,23 @@ def do_time_collibration(min, max):
     #amplitude_XTDS          = ddd_read.data; % in %
     #addr_xtds_onoff         = 'FLASH.DIAG/TIMINGINFO/FLFXTDS/ON_BEAM'
     ## prepare camera
-# switch off ROIs
+# switch off ROIs -----------------------------------------------------------
     ddd_write = pydoocs.write((addr.camara+'ROI_SPECTRUM.ON'), 0);
     ddd_write = pydoocs.write((addr.camara+'ROI2_SPECTRUM.ON'), 0);
-# switch off: BG subtraction
+# switch off: BG subtraction -----------------------------------------------------------
     ddd_write = pydoocs.write((addr.camara+'SUBSTR.ON'), 0);
 # switch on spectrum
     ddd_write = pydoocs.write((addr.camara+'SPECTRUM.ON'), 1);
 
-## prepare data structure
+## prepare data structure -----------------------------------------------------------
     ddd_read        = pydoocs.read([addr.camara, 'IMAGE_EXT']);
     cam_spec        = ddd_read[data];
 
-    # background (shot, spectrum)
+    # background (shot, spectrum) -----------------------------------------------------------
     bgr_x           = zeros(num_bgr, np.shape(cam_spec.val_val)[1]);
     bgr_y           = zeros(num_bgr, np.shape(cam_spec.val_val)[0]);
 
-# signal (scan_point, shot, spectrum)
+# signal (scan_point, shot, spectrum) -----------------------------------------------------------
     raw_spec_x      = np.zeros(num_actuator, num_sig, np.shape(cam_spec.val_val)[1]);
     corr_spec_x     = raw_spec_x;
     raw_spec_y      = np.zeros(num_actuator, num_sig, np.shape(cam_spec.val_val)[0]);
@@ -62,14 +62,14 @@ def do_time_collibration(min, max):
             scale_y         = 0.006352; # mm/pixel
 
 
-# current rbv
+# current rbv -----------------------------------------------------------
     actuator_rbv    = np.zeros([1, num_actuator]);
 
-# charge
+# charge -----------------------------------------------------------
     charge_7FLFMAFF = np.zeros((num_actuator, num_sig));
     charge_7FLFDUMP = np.zeros((num_actuator, num_sig));
 
-## prepare block laser for FLASH2
+## prepare block laser for FLASH2 -----------------------------------------------------------
 
 # which laser
     name_laser          = pydoocs.read('FLASH.DIAG/TIMER/FLASHCPUTIME1.0/LASER_SELECT.2')['data'];
@@ -81,7 +81,7 @@ def do_time_collibration(min, max):
     rep_rate            = rep_rate_macro/(dividerA_event7+1);
 
 
-    ## prepare actuator scan list
+    ## prepare actuator scan list -----------------------------------------------------------
 # reference setpoint
     ref_actuator_set    = 1e-3*np.round(1e3*pydoocs.read(addr_actuator_set)['data'] );
     ref_actuator_rbv    = 1e-3*np.round(1e3*pydoocs.read(addr_actuator_rbv)['data'] );
@@ -93,29 +93,90 @@ def do_time_collibration(min, max):
 
     ## take background
 
-    ddd_write = doocswrite([addr_cam, 'TRIGGERDELAYABS'], 1000);
+    ddd_write = pydoocs.write([addr_cam+'TRIGGERDELAYABS'], 1000);
     print(' - changed camera delay');
     pause(2)
-###################### Should be fixed 
+###################### Should be fixed -----------------------------------------------------------
 # take bgr
-for jj in range(num_bgr)
+    for jj in range(num_bgr):
 
-    % read x
-    ddd_read            = doocsread([addr_cam, 'SPECTRUM.X.TD']);
-    bgr_x(jj,:)         = ddd_read.data.d_gspect_array_val;
-    ddd_read            = doocsread([addr_cam, 'SPECTRUM.Y.TD']);
-    bgr_y(jj,:)         = ddd_read.data.d_gspect_array_val;
-    datatimestamp(jj)         = ddd_read.timestamp;
-    % compared it with last measurement
-    if jj > 1
-        while datatimestamp(jj) == datatimestamp(jj-1)
-            ddd_read        = doocsread([addr_cam, 'SPECTRUM.X.TD']);
-            bgr_x(jj,:)     = ddd_read.data.d_gspect_array_val;
+    # read x
+        ddd_read            = pydoocs.read([addr_cam+'SPECTRUM.X.TD']);
+        bgr_x[jj, :]        = ddd_read['d_gspect_array_val'];
+        datatimestamp[jj]   = ddd_read['timestamp'];
+        print(jj)
+    ## compared it with last measurement -----------------------------------------------------------
+        if jj > 1:
+            while datatimestamp[jj] == datatimestamp[jj-1]:
+                ddd_read        = pydoocs.read([addr_cam+'SPECTRUM.X.TD']);
+                bgr_x(jj,:)     = ddd_read['d_gspect_array_val'];
 
-            display( [' - (', num2str(jj), ') same data ... wait ...']);
-            time.sleep(1/rep_rate)
-        end
-    end
+                print( [' same data ... wait ...']);
+                time.sleep(1/rep_rate)
+        ddd_read            = pydoocs.read([addr_cam+'SPECTRUM.Y.TD']);
+        bgr_y[jj, :]        = ddd_read['d_gspect_array_val'];
+        datatimestamp[jj]   = ddd_read['timestamp'];
+
+        if jj > 1:
+            while datatimestamp[jj] == datatimestamp[jj-1]:
+                ddd_read        = pydoocs.read([addr_cam+'SPECTRUM.Y.TD']);
+                bgr_x(jj,:)     = ddd_read['d_gspect_array_val'];
+                time.sleep(1/rep_rate)
+
+
+    # compute mean()
+    bgr_spec_x_mean = np.mean(bgr_x);
+    bgr_spec_y_mean = np.mean(bgr_y);
+    # take one img
+    ddd_read        = doocsread([addr_cam, 'IMAGE_EXT']);
+    bgr_img         = ddd_read['val_val'];
+
+    ## scan loop -----------------------------------------------------------
+#figure(2)
+    print( '(phase collib): Start scan ...');
+
+# unblock laser -----------------------------------------------------------
+
+    ddd_write = pydooc.swrite([addr_cam+'TRIGGERDELAYABS'], 0.0);
+    print(' - changed camera delay back');
+    pause(1)
+
+# turn XTDS on: -----------------------------------------------------------
+    tmp      = pydoocs.write(addr.xtds_onoff, 1);
+
+    for jj in range(num_sig):
+        
+        ### read actuator readback
+        ddd_read                = pydoocs.read(addr_actuator_rbv);
+        scan_list_rbv[ii,jj]    = ddd_read['data'];
+
+        ## read spectrum x
+        ddd_read                = pydoocs.read([addr.camera+ 'SPECTRUM.X.TD']);
+        raw_spec_x[ii,jj,:]     = ddd_read['d_gspect_array_val'];
+        # compared it with last measurement
+        datatimestamp[jj]         = ddd_read['timestamp'];
+        # compared it with last measurement
+        if jj > 1:
+            while datatimestamp[jj] == datatimestamp[jj-1]:
+
+                ddd_read            = pydoocs.read([addr.camera+'SPECTRUM.X.TD']);
+                raw_spec_x[ii,jj,:] = ddd_read['d_gspect_array_val'];
+                print( '(): same data ... wait ...');
+                pause(1/rep_rate)
+
+
+        # remove bg x
+        # corr_spec_x(ii,jj,:)    = hlc_clean_line( squeeze(raw_spec_x(ii,jj,:)) )
+        tmp                     = np.squeeze(raw_spec_x[ii,jj,:]);
+        corr_spec_x[ii,jj,:]    = tmp' - bgr_spec_x_mean;
+
+        # filter (mean), fit (asymmetric gauss) and position (from fit)
+        #tmp                     = medfilt1(corr_spec_x(ii,jj,:), 3);
+        #tmp                     = util_gaussFit(1:length(tmp), tmp, 1, 1);
+        #pos_CoM_x(ii,jj)        = tmp(2);
+
+
+        
 
 
 
