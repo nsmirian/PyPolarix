@@ -5,13 +5,15 @@ def do_time_collibration(min, max):
     import pydoocs
     #from datetime import date
     from datetime import datetime
+    import scipy.signal as sg
+    from scipy.optimize import curve_fit
     #print(addr.TDSphase)
     fontSize        = 14;
     num_actuator=6;
     num_bgr=10;
     num_actuator=5;
-    delay = pydoocs.read(addr.camara 'TRIGGERDELAYABS')['data'];
-    #pixelformat=doocswrite(addr.camara 'FORMAT.OUT')['data']; #until IAS is used:...
+    delay = pydoocs.read(addr.camera 'TRIGGERDELAYABS')['data'];
+    #pixelformat=doocswrite(addr.camera 'FORMAT.OUT')['data']; #until IAS is used:...
 # set pixelformat out to mono8
     name_actuator           = 'XTDS phase';
     addr_actuator_set       = 'FLASH.RF/LLRF.CONTROLLER/CTRL.POLARIX/SP.PHASE';
@@ -27,15 +29,15 @@ def do_time_collibration(min, max):
     #addr_xtds_onoff         = 'FLASH.DIAG/TIMINGINFO/FLFXTDS/ON_BEAM'
     ## prepare camera
 # switch off ROIs -----------------------------------------------------------
-    ddd_write = pydoocs.write((addr.camara+'ROI_SPECTRUM.ON'), 0);
-    ddd_write = pydoocs.write((addr.camara+'ROI2_SPECTRUM.ON'), 0);
+    ddd_write = pydoocs.write((addr.camera+'ROI_SPECTRUM.ON'), 0);
+    ddd_write = pydoocs.write((addr.camera+'ROI2_SPECTRUM.ON'), 0);
 # switch off: BG subtraction -----------------------------------------------------------
-    ddd_write = pydoocs.write((addr.camara+'SUBSTR.ON'), 0);
+    ddd_write = pydoocs.write((addr.camera+'SUBSTR.ON'), 0);
 # switch on spectrum
-    ddd_write = pydoocs.write((addr.camara+'SPECTRUM.ON'), 1);
+    ddd_write = pydoocs.write((addr.camera+'SPECTRUM.ON'), 1);
 
 ## prepare data structure -----------------------------------------------------------
-    ddd_read        = pydoocs.read(addr.camara+'IMAGE_EXT');
+    ddd_read        = pydoocs.read(addr.camera+'IMAGE_EXT');
     cam_spec        = ddd_read[data];
 
     # background (shot, spectrum) -----------------------------------------------------------
@@ -93,41 +95,12 @@ def do_time_collibration(min, max):
 
     ## take background
 
-    ddd_write = pydoocs.write([addr_cam+'TRIGGERDELAYABS'], 1000);
+    ddd_write = pydoocs.write(addr_cam+'TRIGGERDELAYABS', 1000);
     print(' - changed camera delay');
-    pause(2)
+    time.sleep(2)
 ###################### Should be fixed -----------------------------------------------------------
 # take bgr
-    for jj in range(num_bgr):
-
-    # read x
-        ddd_read            = pydoocs.read(addr_cam+'SPECTRUM.X.TD');
-        bgr_x[jj, :]        = ddd_read['data'];
-        datatimestamp[jj]   = ddd_read['timestamp'];
-        print(jj)
-    ## compared it with last measurement -----------------------------------------------------------
-        if jj > 1:
-            while datatimestamp[jj] == datatimestamp[jj-1]:
-                ddd_read        = pydoocs.read(addr_cam+'SPECTRUM.X.TD');
-                bgr_x(jj,:)     = ddd_read['data'];
-
-                print( [' same data ... wait ...']);
-                time.sleep(1/rep_rate)
-        ddd_read            = pydoocs.read(addr_cam+'SPECTRUM.Y.TD');
-        bgr_y[jj, :]        = ddd_read['data'];
-        datatimestamp[jj]   = ddd_read['timestamp'];
-
-        if jj > 1:
-            while datatimestamp[jj] == datatimestamp[jj-1]:
-                ddd_read        = pydoocs.read([addr_cam+'SPECTRUM.Y.TD']);
-                bgr_x(jj,:)     = ddd_read['d_gspect_array_val'];
-                datatimestamp[jj]   = ddd_read['timestamp'];
-                time.sleep(1/rep_rate)
-
-
-    # compute mean()
-    bgr_spec_x_mean = np.mean(bgr_x);
-    bgr_spec_y_mean = np.mean(bgr_y);
+    bgr_spec_x_mean = take_spectrum_data(num_bgr, 1/rep_rate)
     # take one img
     ddd_read        = doocsread([addr_cam, 'IMAGE_EXT']);
     bgr_img         = ddd_read['val_val'];
@@ -140,30 +113,37 @@ def do_time_collibration(min, max):
 
     ddd_write = pydooc.swrite([addr_cam+'TRIGGERDELAYABS'], 0.0);
     print(' - changed camera delay back');
-    pause(1)
+    time.sleep(1/rep_rate)
 
 # turn XTDS on: -----------------------------------------------------------
     tmp      = pydoocs.write(addr.xtds_onoff, 1);
 
-    for jj in range(num_sig):
-        
+    for ii in range(num_actuator): #scan points
+         # set value
+         ddd_write = pydoocs.write(addr_actuator_set, scan_list_set[ii]);
+         #print( ' Set actuator ', name_actuator, ' to ' , num2str(scan_list_set(ii), '%5.3f')]);
+
+    # wait for set = rbv
+        print('Actuator name_actuator set')
+        time.sleep(1/rep_rate)
         ### read actuator readback
         ddd_read                = pydoocs.read(addr_actuator_rbv);
-        scan_list_rbv[ii,jj]    = ddd_read['data'];
+        scan_list_rbv[ii]    = ddd_read['data'];
 
-        ## read spectrum x
-        ddd_read                = pydoocs.read([addr.camera+ 'SPECTRUM.X.TD']);
-        raw_spec_x[ii,jj,:]     = ddd_read['d_gspect_array_val'];
-        # compared it with last measurement
-        datatimestamp[jj]         = ddd_read['timestamp'];
-        # compared it with last measurement
-        if jj > 1:
-            while datatimestamp[jj] == datatimestamp[jj-1]:
 
-                ddd_read            = pydoocs.read([addr.camera+'SPECTRUM.X.TD']);
-                raw_spec_x[ii,jj,:] = ddd_read['d_gspect_array_val'];
-                print( '(): same data ... wait ...');
-                pause(1/rep_rate)
+        # remove BG
+        tem=take_spectrum_data(num_sig, 0)
+        raw_spec_x=tmp - bgr_spec_x_mean
+            # filter
+        raw_spec_x=sg.medfilt(raw_spec_x)
+        popt, pcov = curve_fit(gaussian, range(1, len(raw_spec_x)+1), raw_spec_x)
+        x0_fit, sigma_fit = popt
+        pos_CoM_x[ii]  = x0_fit
+
+        corr_spec_x=np.append(corr_spec_x,[raw_spec_x], axis=0)
+
+
+# plot
 
 
         # remove bg x
@@ -176,9 +156,38 @@ def do_time_collibration(min, max):
         #tmp                     = util_gaussFit(1:length(tmp), tmp, 1, 1);
         #pos_CoM_x(ii,jj)        = tmp(2);
 
+def take_spectrum_data(iteration, rest_time):
+    import doocs_address as addr
+    import numpy as np
 
-        
+    ddd_read= pydoocs.read(addr.camera+'SPECTRUM.X.TD');
+    x=[ddd_read['data']]
+    datatimestamp= ddd_read['timestamp']
 
+    datatimestamp=np.zeros(iteration)
+    for jj in range(1,iteration):
+
+        # read x
+        ddd_read            = pydoocs.read(addr.camera+'SPECTRUM.X.TD');
+        x       = np.append(x, [ddd_read['data']], axis=0);
+        datatimestamp   =np.append(datatimestamp, ddd_read['timestamp']);
+        print(jj)
+        ## compared it with last measurement -----------------------------------------------------------
+
+        while datatimestamp[jj] == datatimestamp[jj-1]:
+            ddd_read        = pydoocs.read(addr.camera+'SPECTRUM.X.TD');
+            x       = np.append(x, [ddd_read['data']], axis=0);
+            datatimestamp   =np.append(datatimestamp, ddd_read['timestamp']);
+            print( ' same data ... wait ...');
+            time.sleep(rest_time)
+        ####read y
+
+        # compute mean()
+    spec_x_mean = np.mean(x,0);
+    return spec_x_mean
+
+def gaussian(x, x0, sigma):
+   return (1 / (sigma * np.sqrt(2 * np.pi))) * np.exp(-((x - x0) ** 2) / (2 * sigma** 2))
 
 
 
